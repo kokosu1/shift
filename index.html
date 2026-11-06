@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>シフト希望</title>
+<meta name="theme-color" content="#1a6b5a">
+<script src="config.js"></script>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --sub:#6b7385; --line:#dde1e8; --acc:#1a6b5a; --accbg:#e6f3ef; --err:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171d; --card:#1d222b; --text:#e8ebf1; --sub:#98a1b3; --line:#2f3643; --acc:#58c1a8; --accbg:#1d3a33; --err:#f2796f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,"Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif; line-height:1.5; }
+  .wrap { max-width:560px; margin:0 auto; padding:20px 16px 96px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--sub); font-size:14px; margin:0 0 20px; }
+  label.lbl { display:block; font-weight:600; font-size:14px; margin:0 0 6px; }
+  select, input[type=text] { width:100%; font-size:16px; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--text); }
+  .days { margin-top:22px; background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  .day { display:flex; align-items:center; gap:10px; padding:10px 14px; border-top:1px solid var(--line); }
+  .day:first-child { border-top:0; }
+  .day.on { background:var(--accbg); }
+  .day input[type=checkbox] { width:22px; height:22px; accent-color:var(--acc); flex:none; }
+  .day .dl { width:74px; flex:none; font-size:16px; cursor:pointer; }
+  .day .dl small { color:var(--sub); }
+  .day.sat .dl small { color:#2a6fd0; } .day.sun .dl small { color:var(--err); }
+  .day input[type=text] { padding:8px 10px; font-size:15px; display:none; }
+  .day.on.open input[type=text] { display:block; }
+  .day .cm { display:none; margin-left:auto; font-size:13px; font-weight:500; padding:7px 12px; border-radius:8px; background:transparent; color:var(--acc); border:1px solid var(--acc); }
+  .day.on .cm { display:inline-block; }
+  .day.on.open .cm { display:none; }
+  .slots { display:none; gap:6px; flex:none; }
+  .day.on.lunch .slots { display:flex; }
+  .chip { font-size:13px; font-weight:600; padding:6px 10px; border-radius:16px; background:transparent; color:var(--sub); border:1px solid var(--line); }
+  .chip.sel { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .ver { text-align:center; color:var(--sub); font-size:11px; margin-top:24px; }
+  .hint { color:var(--sub); font-size:13px; margin:8px 2px 0; }
+  .bar { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:12px 16px; }
+  .bar .in { max-width:560px; margin:0 auto; display:flex; gap:12px; align-items:center; }
+  .bar .cnt { color:var(--sub); font-size:14px; flex:1; }
+  button { font-size:16px; font-weight:600; border:0; border-radius:10px; padding:13px 26px; background:var(--acc); color:#fff; cursor:pointer; }
+  button:disabled { opacity:.5; }
+  .err { color:var(--err); font-size:14px; margin-top:12px; min-height:20px; }
+  .done { text-align:center; padding:56px 8px; }
+  .done .big { font-size:44px; }
+  .done h2 { margin:8px 0; }
+  .load { text-align:center; padding:80px 8px; color:var(--sub); }
+  .spin { width:34px; height:34px; border:4px solid var(--line); border-top-color:var(--acc); border-radius:50%; margin:0 auto 14px; animation:sp .8s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+var D = null;
+var Q = (function () { var o = {}; location.search.replace(/^\?/, "").split("&").forEach(function (kv) { if (!kv) return; var i = kv.indexOf("="); o[decodeURIComponent(i < 0 ? kv : kv.slice(0, i))] = i < 0 ? "" : decodeURIComponent(kv.slice(i + 1).replace(/\+/g, " ")); }); return o; })();
+var CK = "shiftInit|" + (Q.store || "") + "|" + (Q.p || "1") + "|" + (Q.ym || "");
+var NK = "shiftName|" + (Q.store || "");
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+var WEEK = ["日","月","火","水","木","金","土"];
+var app = document.getElementById("app");
+
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+function render() {
+  var h = '<h1>' + (D.store ? D.store + ' ' : '') + D.m + '月' + (D.p == 1 ? '前半' : '後半') + 'のシフト希望</h1>';
+  h += '<p class="sub">' + D.m + '月' + D.from + '日〜' + D.m + '月' + D.to + '日。出られる日にチェックを入れてください。</p>';
+  h += '<label class="lbl" for="nm">名前</label><select id="nm" onchange="nameChg()"><option value="">選んでください</option>';
+  for (var i = 0; i < D.names.length; i++) h += '<option>' + esc(D.names[i]) + '</option>';
+  h += '</select>';
+  h += '<div class="days" id="days">';
+  for (var d = D.from; d <= D.to; d++) {
+    var w = new Date(D.y, D.m - 1, d).getDay();
+    h += '<div class="day' + (w == 6 ? ' sat' : '') + (w == 0 ? ' sun' : '') + '" id="r' + d + '">' +
+         '<input type="checkbox" id="c' + d + '" onchange="tog(' + d + ')">' +
+         '<label class="dl" for="c' + d + '">' + d + '日<small>(' + WEEK[w] + ')</small></label>' +
+         '<span class="slots"><button type="button" class="chip" id="L' + d + '" onclick="chip(' + d + ',\'L\')">ランチ</button>' +
+         '<button type="button" class="chip sel" id="N' + d + '" onclick="chip(' + d + ',\'N\')">夜</button></span>' +
+         '<button type="button" class="cm" onclick="openCm(' + d + ')">コメントを書く</button>' +
+         '<input type="text" id="t' + d + '" maxlength="60" placeholder="コメント(例: 17時から)">' +
+         '</div>';
+  }
+  h += '</div>';
+  h += '<p class="hint" id="lh" style="display:none">ランチにも入れる日は、日付のチェックのあと「ランチ」も押してください(両方選べます)。</p>';
+  h += '<p class="hint">時間に希望があるときは、その日のコメントに書いてください。コメントがなければ「いつでも」です。もう一度送ると、前の内容は上書きされます。</p>';
+  h += '<div class="err" id="err"></div><div class="ver">v9</div>';
+  h += '<div class="bar"><div class="in"><div class="cnt" id="cnt">0日 選択中</div><button id="go" onclick="send()">送信する</button></div></div>';
+  app.innerHTML = h;
+  var last = lsGet(NK);
+  if (last && D.names.indexOf(last) >= 0) { document.getElementById("nm").value = last; nameChg(); }
+  document.title = D.m + "月" + (D.p == 1 ? "前半" : "後半") + "シフト希望";
+}
+function touched() {
+  if (!document.getElementById("nm")) return false;
+  for (var d = D.from; d <= D.to; d++) { var c = document.getElementById("c" + d); if (c && c.checked) return true; }
+  return false;
+}
+
+// ランチにも入る人を選んだら、日ごとに「ランチ」「夜」を選べるようにする
+function isLunch() { var n = document.getElementById("nm").value; return (D.lunch || []).indexOf(n) >= 0; }
+function nameChg() {
+  var on = isLunch();
+  for (var d = D.from; d <= D.to; d++) document.getElementById("r" + d).classList.toggle("lunch", on);
+  var h = document.getElementById("lh"); if (h) h.style.display = on ? "block" : "none";
+}
+function chip(d, k) {
+  var b = document.getElementById(k + d); b.classList.toggle("sel");
+  var l = document.getElementById("L" + d).classList.contains("sel"), n = document.getElementById("N" + d).classList.contains("sel");
+  if (!l && !n) { document.getElementById("c" + d).checked = false; document.getElementById("N" + d).classList.add("sel"); tog(d); }
+}
+function tog(d) {
+  var on = document.getElementById("c" + d).checked;
+  var r = document.getElementById("r" + d);
+  if (on) { r.classList.add("on"); }
+  else { r.classList.remove("on"); r.classList.remove("open"); document.getElementById("t" + d).value = ""; }
+  count();
+}
+// 「コメントを書く」を押したときだけ、入力の欄を出す(チェックだけでは、キーボードは出ない)
+function openCm(d) {
+  document.getElementById("r" + d).classList.add("open");
+  document.getElementById("t" + d).focus();
+}
+function count() {
+  var n = 0;
+  for (var d = D.from; d <= D.to; d++) if (document.getElementById("c" + d).checked) n++;
+  document.getElementById("cnt").textContent = n + "日 選択中";
+}
+// この端末の印(はじめて送るときに作って、この端末に覚えておく)。いたずらを見つけるため
+function devId() {
+  var k = "shiftDev", v = "";
+  try { v = localStorage.getItem(k) || ""; } catch (e) {}
+  if (!v) {
+    v = Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+    try { localStorage.setItem(k, v); } catch (e) {}
+  }
+  return v;
+}
+function send() {
+  var err = document.getElementById("err"); err.textContent = "";
+  var name = document.getElementById("nm").value;
+  if (!name) { err.textContent = "名前を選んでください。"; return; }
+  var days = {}, n = 0;
+  for (var d = D.from; d <= D.to; d++) {
+    if (document.getElementById("c" + d).checked) {
+      var t = document.getElementById("t" + d).value;
+      if (isLunch()) {
+        days[d] = { l: document.getElementById("L" + d).classList.contains("sel"), n: document.getElementById("N" + d).classList.contains("sel"), c: t };
+      } else {
+        days[d] = t;
+      }
+      n++;
+    }
+  }
+  if (n === 0 && !confirm("出られる日が、ひとつも選ばれていません。このまま送りますか?")) return;
+  var b = document.getElementById("go"); b.disabled = true; b.textContent = "送信中…";
+  lsSet(NK, name);
+  var payload = { name: name, store: D.store || "", p: D.p, y: D.y, m: D.m, days: days, dev: devId(), ua: navigator.userAgent, scr: screen.width + "x" + screen.height + "@" + (window.devicePixelRatio || 1) };
+  fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ kind: "shift", payload: payload }) })
+    .then(function (res) { return res.json(); })
+    .then(function (r) {
+      if (r && r.ok) {
+        app.innerHTML = '<div class="done"><div class="big">✅</div><h2>送信しました</h2><p class="sub">' + esc(name) + 'さん、' + r.count + '日分を受け取りました。<br>直したいときは、もう一度送ってください。</p></div>';
+      } else {
+        b.disabled = false; b.textContent = "送信する"; err.textContent = (r && r.msg) || "送れませんでした。";
+      }
+    })
+    .catch(function () {
+      b.disabled = false; b.textContent = "送信する"; err.textContent = "送れませんでした。電波のよいところで、もう一度押してください。";
+    });
+}
+
+// はじめに: 前に開いたときの中身があれば、すぐに出す → 裏で新しい中身を取ってきて、変わっていたら入れかえる
+function apiUrl(extra) {
+  var u = API_URL + "?api=init&p=" + encodeURIComponent(Q.p || "1");
+  if (Q.ym) u += "&ym=" + encodeURIComponent(Q.ym);
+  if (Q.store) u += "&store=" + encodeURIComponent(Q.store);
+  return u;
+}
+(function start() {
+  var cached = lsGet(CK);
+  if (cached) { try { D = JSON.parse(cached); render(); } catch (e) { D = null; } }
+  if (!D) app.innerHTML = '<div class="load"><div class="spin"></div>読み込んでいます…</div>';
+  fetch(apiUrl(), { method: "GET" })
+    .then(function (res) { return res.json(); })
+    .then(function (r) {
+      if (!r || !r.ok) throw new Error((r && r.msg) || "");
+      var txt = JSON.stringify(r);
+      lsSet(CK, txt);
+      if (!D) { D = r; render(); return; }
+      if (txt === JSON.stringify(D)) return;
+      if (!touched()) { D = r; render(); return; }
+      // もう選び始めていたら、名前の一覧だけ新しくする
+      var sel = document.getElementById("nm"), cur = sel.value;
+      D.names = r.names; D.lunch = r.lunch;
+      var h = '<option value="">選んでください</option>';
+      for (var i = 0; i < D.names.length; i++) h += '<option>' + esc(D.names[i]) + '</option>';
+      sel.innerHTML = h; sel.value = cur;
+    })
+    .catch(function (e) {
+      if (!D) app.innerHTML = '<div class="load">読み込めませんでした。<br>電波のよいところで、ページを開き直してください。</div>';
+    });
+})();
+</script>
+</body>
+</html>
