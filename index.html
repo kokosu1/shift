@@ -56,6 +56,7 @@
 <script>
 var D = null;
 var Q = (function () { var o = {}; location.search.replace(/^\?/, "").split("&").forEach(function (kv) { if (!kv) return; var i = kv.indexOf("="); o[decodeURIComponent(i < 0 ? kv : kv.slice(0, i))] = i < 0 ? "" : decodeURIComponent(kv.slice(i + 1).replace(/\+/g, " ")); }); return o; })();
+var T = (function () { var m = /[#&]t=([^&]+)/.exec(location.hash || ""); return m ? decodeURIComponent(m[1]) : ""; })();
 var CK = "shiftInit|" + (Q.store || "") + "|" + (Q.p || "1") + "|" + (Q.ym || "");
 var NK = "shiftName|" + (Q.store || "");
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -158,7 +159,7 @@ function send() {
   var b = document.getElementById("go"); b.disabled = true; b.textContent = "送信中…";
   lsSet(NK, name);
   var payload = { name: name, store: D.store || "", p: D.p, y: D.y, m: D.m, days: days, dev: devId(), ua: navigator.userAgent, scr: screen.width + "x" + screen.height + "@" + (window.devicePixelRatio || 1) };
-  fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ kind: "shift", payload: payload }) })
+  fetch(API_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ kind: "shift", t: T, payload: payload }) })
     .then(function (res) { return res.json(); })
     .then(function (r) {
       if (r && r.ok) {
@@ -174,18 +175,20 @@ function send() {
 
 // はじめに: 前に開いたときの中身があれば、すぐに出す → 裏で新しい中身を取ってきて、変わっていたら入れかえる
 function apiUrl(extra) {
-  var u = API_URL + "?api=init&p=" + encodeURIComponent(Q.p || "1");
+  var u = API_URL + "?api=init&p=" + encodeURIComponent(Q.p || "1") + "&t=" + encodeURIComponent(T);
   if (Q.ym) u += "&ym=" + encodeURIComponent(Q.ym);
   if (Q.store) u += "&store=" + encodeURIComponent(Q.store);
   return u;
 }
 (function start() {
+  if (!T) { app.innerHTML = '<div class="load">このページは、LINE のシフト募集の「シフトを入力する」ボタンから開いてください。</div>'; return; }
   var cached = lsGet(CK);
   if (cached) { try { D = JSON.parse(cached); render(); } catch (e) { D = null; } }
   if (!D) app.innerHTML = '<div class="load"><div class="spin"></div>読み込んでいます…</div>';
   fetch(apiUrl(), { method: "GET" })
     .then(function (res) { return res.json(); })
     .then(function (r) {
+      if (r && r.ok === false && /リンク/.test(r.msg || "")) { try { localStorage.removeItem(CK); } catch (e) {} D = null; app.innerHTML = '<div class="load">' + esc(r.msg) + '</div>'; return; }
       if (!r || !r.ok) throw new Error((r && r.msg) || "");
       var txt = JSON.stringify(r);
       lsSet(CK, txt);
