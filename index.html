@@ -56,7 +56,16 @@
 <script>
 var D = null;
 var Q = (function () { var o = {}; location.search.replace(/^\?/, "").split("&").forEach(function (kv) { if (!kv) return; var i = kv.indexOf("="); o[decodeURIComponent(i < 0 ? kv : kv.slice(0, i))] = i < 0 ? "" : decodeURIComponent(kv.slice(i + 1).replace(/\+/g, " ")); }); return o; })();
-var T = (function () { var m = /[#&]t=([^&]+)/.exec(location.hash || ""); return m ? decodeURIComponent(m[1]) : ""; })();
+// 合言葉: LINE のボタンのリンクの「#t=…」。読んだら、この端末に覚えて、アドレス欄からは消す(見えないように)
+var T = (function () {
+  var key = "shiftT|" + (function () { var m = /[?&]store=([^&#]*)/.exec(location.search); return m ? decodeURIComponent(m[1]) : ""; })();
+  var m = /[#&]t=([^&]+)/.exec(location.hash || ""), t = m ? decodeURIComponent(m[1]) : "";
+  try {
+    if (t) { localStorage.setItem(key, t); history.replaceState(null, "", location.pathname + location.search); }
+    else { t = localStorage.getItem(key) || ""; }
+  } catch (e) {}
+  return t;
+})();
 var CK = "shiftInit|" + (Q.store || "") + "|" + (Q.p || "1") + "|" + (Q.ym || "");
 var NK = "shiftName|" + (Q.store || "");
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
